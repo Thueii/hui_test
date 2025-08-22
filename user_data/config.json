@@ -45,23 +45,25 @@
         "pair_whitelist": [
         ],
         "pair_blacklist": [
+            /*
             "(LINA)/.*",
             "(CTXC)/.*",
             "(WING|RAD|BAKE|HARD|LUNA|PHA|CTK|LINA|APE|CTXC)/.*",
             "(PROM)/.*",
             "(AIXBT|TROY|ACA|S|IOST|LAYER|ARPA|DF|ACX|SOLV)/.*",
             "(G|MASK|TRUMP|PENGU|XRP|PNUT|WIF|FIO|STORJ)/.*",
-            "(AUCTION|BERA|OMNI|PENDEL|QKC|ACT|ANIME|SKL|SXP|GAS)/.*",
+            "(AUCTION|BERA|OMNI|PENDEL|QKC|ACT|ANIME|SXP|GAS)/.*",
             "(UMA|STPT|SCR|HMSTR|ZRX|NTRN|TST|MLN|ELF)/.*",
             "(SPELL|CVX|ONT|NMR|QUICK|BEAMX|NOT|GLM|BONK|POND)/.*",
             "(DYM|ALPINE|ARDR|BOME)/.*",
             "(TLM|ANKR|XLM|XTZ|LSK|OGN|IOTA|JTO|VELODROME)/.*",
             "(BTTC|XVS|COMP|JST|GNS|ALCX|QTUM|QI|ALICE)/.*",
             "(GMX|LDO|CATI|CTSI|AGLD|MOVR|TNSR|ADX|PEOPLE)/.*",
-            "(PENDLE|BIO|OM)/.*",
-            "(BAND|BMT)/.*",
+            "(PENDLE|OM)/.*",
             "(NEO|CFX|VET|MDT|GPS|CKB|WAN|LRC|WET)/.*",
             "(HIFI|CETUS|ALPACA|SFP|T|TON|REI|CRV|GMT|METIS|KSM|USTC|ORDI|PEPE|STEEM)/.*"
+            */
+            "(BAND|BMT)/.*"
         ]
     },
     "pairlists": [
