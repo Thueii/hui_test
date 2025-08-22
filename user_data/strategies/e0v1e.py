@@ -17,7 +17,8 @@ class E0V1E(IStrategy):
     }
     timeframe = '5m'
     process_only_new_candles = True
-    startup_candle_count = 20
+    # startup_candle_count = 20
+    startup_candle_count = 2
     order_types = {
         'entry': 'market',
         'exit': 'market',
