@@ -63,7 +63,7 @@
             "(NEO|CFX|VET|MDT|GPS|CKB|WAN|LRC|WET)/.*",
             "(HIFI|CETUS|ALPACA|SFP|T|TON|REI|CRV|GMT|METIS|KSM|USTC|ORDI|PEPE|STEEM)/.*"
             */
-            "(BAND|BMT)/.*"
+            "(BAND|BMT|TKO)/.*"
         ]
     },
     "pairlists": [
