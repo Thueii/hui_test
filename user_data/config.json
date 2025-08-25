@@ -64,7 +64,8 @@
             "(HIFI|CETUS|ALPACA|SFP|T|TON|REI|CRV|GMT|METIS|KSM|USTC|ORDI|PEPE|STEEM)/.*"
             */
             "(BAND|BMT|TKO)/.*"
-        ]
+        ],
+        "fee": 0.001
     },
     "pairlists": [
         {
