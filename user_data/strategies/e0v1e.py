@@ -31,7 +31,7 @@ class E0V1E(IStrategy):
         'stoploss_on_exchange_market_ratio': 0.99
     }
 
-    stoploss = -0.25
+    stoploss = -0.1
     trailing_stop = True
     trailing_stop_positive = 0.002
     trailing_stop_positive_offset = 0.03
