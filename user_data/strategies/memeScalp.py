@@ -1,42 +1,32 @@
 # user_data/strategies/meme_scalp.py
-from functools import reduce
-from datetime import datetime, timedelta
 from typing import Optional
-
-import numpy as np
 import pandas as pd
-import pandas_ta as pta
 import talib.abstract as ta
-
-from freqtrade.strategy import IStrategy, merge_informative_pair
+from freqtrade.strategy import IStrategy
 from freqtrade.persistence import Trade
 
 
 class MemeScalp(IStrategy):
     """
-    MEME/USDT scalping:
-    - timeframe: 1m
+    MEME/USDT scalping (1m):
     - Entry: uptrend + expanded volatility
-    - Exit: limit TP at open_rate + 0.000002; 1m timeout -> market
+    - Exit: place a LIMIT TP immediately after entry at (open_rate + ABS_TP)
+            If unfilled for 1 minute -> cancel and emergency_exit MARKET.
     """
 
+    # ===== Core pacing =====
     timeframe = "1m"
-    # 让最后一根K线未收盘也会反复评估（更灵敏）
-    process_only_new_candles = False
+    process_only_new_candles = False  # 允许未收盘期间反复评估，更灵敏
+    startup_candle_count = 50  # 够用以计算BB/ATR等
 
-    startup_candle_count = 50
+    # ===== Risk / ROI =====
+    minimal_roi = {"0": 1}  # 基本等于不靠 ROI 卖出（由自定义退出主导）
+    stoploss = -0.5  # 固定兜底止损（亏10%强平）
+    trailing_stop = False  # 本策略由“入场即挂TP + 超时兜底”主导，不启用追踪止盈
 
-    minimal_roi = {
-        "0": 1  # 基本等于不靠 ROI 卖出，交给自定义退出
-    }
-
-    # 固定兜底止损（可按需调整或改成 custom_stoploss）
-    stoploss = -0.10
-
-    # 追踪止盈不启用（由我们的限价+超时策略主导）
-    trailing_stop = False
-
-    # 订单类型：入场走市价；出场先限价；紧急/超时用市价兜底
+    # ===== Order types =====
+    # - 入场用市价，保证成交
+    # - 出场用限价（我们会在 custom_exit/custom_exit_price 返回），若超时则走 emergency_exit=market
     order_types = {
         "entry": "market",
         "exit": "limit",
@@ -44,56 +34,52 @@ class MemeScalp(IStrategy):
         "force_entry": "market",
         "force_exit": "market",
         "stoploss": "market",
-        "stoploss_on_exchange": True,  # 止损挂到交易所
-        "stoploss_on_exchange_interval": 30,
-        "stoploss_on_exchange_market_ratio": 0.99,
+
+        # 如需把止损挂到交易所，打开下面两行（可选，增强容错，机器人宕机也会触发止损）
+        # "stoploss_on_exchange": True,
+        # "stoploss_on_exchange_interval": 30,
     }
 
-    # 限价卖单超时控制：1 分钟没成交 -> 触发 emergency_exit (market)
+    # 限价卖单超时设置：1分钟没成交 -> 触发一次超时 -> emergency_exit=market 兜底
     unfilledtimeout = {
-        "entry": 2,  # 仅示例：买单最长等 2 分钟
-        "exit": 1,  # 卖单 1 分钟没成交就超时
-        "exit_timeout_count": 1,  # 超时一次后，走 emergency_exit=market
+        "entry": 2,
+        "exit": 1,  # 限价卖单 1 分钟未成就超时
+        "exit_timeout_count": 1,  # 发生一次超时后，走 emergency_exit（市价）
         "unit": "minutes",
     }
 
-    # 你的“固定绝对价差”止盈（MEME/USDT）
+    # 你的“绝对价差”止盈（基于买入均价 open_rate）
     ABS_TP = 0.000002
 
-    # ===== 指标计算 =====
+    # ===== 指标 =====
     def populate_indicators(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        # 动能/趋势
+        # 趋势/动能
         df["ema_fast"] = ta.EMA(df["close"], timeperiod=9)
         df["ema_slow"] = ta.EMA(df["close"], timeperiod=21)
         df["rsi"] = ta.RSI(df["close"], timeperiod=14)
+        df["rsi_slope"] = df["rsi"] - df["rsi"].shift(1)
 
-        # 波动：布林带宽度 + ATR 相对幅度
+        # 波动：布林带宽度 / ATR百分比
         bb = ta.BBANDS(df["close"], timeperiod=20, nbdevup=2, nbdevdn=2)
         df["bb_width"] = (bb["upperband"] - bb["lowerband"]) / df["close"]
         df["atr"] = ta.ATR(df["high"], df["low"], df["close"], timeperiod=14)
         df["atr_pct"] = df["atr"] / df["close"]
 
-        # RSI 斜率（上升趋势）
-        df["rsi_slope"] = df["rsi"] - df["rsi"].shift(1)
-
         return df
 
-    # ===== 入场规则 =====
+    # ===== 入场：顺势 + 有波动 =====
     def populate_entry_trend(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         df["enter_long"] = 0
         df["enter_tag"] = ""
 
-        # 顺势：短均线在长均线上方；RSI 在 45~70 且在上升
         trend_ok = (
             (df["ema_fast"] > df["ema_slow"]) & 
             (df["rsi"].between(45, 70)) & 
-            (df["rsi_slope"] > 0)
+            (df["rsi_slope"] > 0)  # RSI 正在上行
         )
-
-        # 有波动：布林带变宽 or ATR 较高（阈值可微调）
         vol_ok = (
-            (df["bb_width"] > 0.01) |  # ~1% 带宽
-            (df["atr_pct"] > 0.005)  # ~0.5% 的 ATR
+            (df["bb_width"] > 0.01) |  # 布林带宽度>1% 说明带宽扩张
+            (df["atr_pct"] > 0.005)  # ATR>0.5% 有可吃的波动
         )
 
         cond = trend_ok & vol_ok
@@ -102,39 +88,41 @@ class MemeScalp(IStrategy):
 
         return df
 
-    # ===== 退出规则（信号层：何时触发卖出） =====
+    # ===== 退出信号：入场后立即挂限价TP =====
     def custom_exit(
-        self, pair: str, trade: Trade, current_time: "datetime",
-        current_rate: float, current_profit: float, **kwargs
+        self,
+        pair: str,
+        trade: Trade,
+        current_time,
+        current_rate: float,
+        current_profit: float,
+        **kwargs,
     ) -> Optional[str]:
         """
-        当现价 >= (买入均价 + ABS_TP) 时触发限价卖出信号。
-        实际卖出价格在 custom_exit_price 里指定。
+        方法A：不等待“到价再挂单”，而是开仓后立即给出退出信号，
+        由 custom_exit_price 返回具体限价 -> 机器人马上在交易所挂限价卖单。
         """
-        target = trade.open_rate + self.ABS_TP
+        # 只要有持仓，就返回一个退出理由，让框架按 custom_exit_price 挂TP限价单
+        return "immediate_tp"
 
-        # 触发条件：现价达到或超过目标（也可加入时间窗口等附加条件）
-        if current_rate >= target:
-            return "tp_abs_hit"
-
-        # 也可以添加“超时平仓”逻辑（例如持仓超过 N 分钟也触发卖出信号）
-        # 按你现在的设想，主要靠 unfilledtimeout -> emergency_exit 处理，不必在这里重复。
-
-        return None
-
-    # ===== 退出价格（执行层：以什么价格卖） =====
     def custom_exit_price(
-        self, pair: str, trade: Trade, current_time: "datetime",
-        current_rate: float, current_profit: float, **kwargs
+        self,
+        pair: str,
+        trade: Trade,
+        current_time,
+        current_rate: float,
+        current_profit: float,
+        **kwargs,
     ) -> Optional[float]:
         """
-        返回限价卖单的价格：open_rate + ABS_TP
-        Freqtrade 会按交易所精度自动处理小数位/步进。
+        返回这次退出要挂的“限价卖出价格”：买入均价 + 绝对价差
+        Freqtrade 会按交易所精度自动取整；如果需要更严格的步进对齐，可在此自行round。
         """
-        price = trade.open_rate + self.ABS_TP
-        return float(price)
+        target = trade.open_rate + self.ABS_TP
+        # （可选）对齐精度：通常不必，框架会帮你按交易所精度处理
+        return float(target)
 
-    # 简化：不使用 populate_exit_trend（交给 custom_exit 系统）
+    # 不使用规则化的 exit_trend（全部交给 custom_exit 系统）
     def populate_exit_trend(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         df["exit_long"] = 0
         df["exit_tag"] = ""
