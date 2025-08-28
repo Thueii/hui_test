@@ -20,9 +20,10 @@
         "exit_timeout_count": 0,
         "unit": "minutes"
     },
-    
+    */
     "entry_pricing": {
-        "price_side": "other",
+        "price_side": "other"
+        /*
         "use_order_book": true,
         "order_book_top": 1,
         "price_last_balance": 0.0,
@@ -30,7 +31,13 @@
             "enabled": false,
             "bids_to_ask_delta": 1
         }
+            */
     },
+    "exit_pricing": {
+        "price_side": "other",
+        "use_order_book": false
+    },
+    /*
     "exit_pricing": {
         "price_side": "other",
         "use_order_book": true,
@@ -46,7 +53,7 @@
         },
         "ccxt_async_config": {
             "enableRateLimit": true,
-            "rateLimit": 50
+            "rateLimit": 100
         },
         "pair_whitelist": ["BIO/USDT"],
 
@@ -127,16 +134,17 @@
         "listen_port": 8080,
         "verbosity": "error",
         "enable_openapi": false,
-        "jwt_secret_key": "1707e46ec7f09da21b7966b7f84ccd6a5b59b8e52428074f22b7585bb262fb93",
-        "ws_token": "C-VdANpKAT9sE3y5PzMXQ0KiUbiAzII4uA",
+        "jwt_secret_key": "46ce35b569d9a83cabb5b6aee27f61d89360bd696f42d850d9720821ba0b66e0",
+        "ws_token": "RO_-cas27_ydcXCNGX6UAxyIb24MKAm8PQ",
         "CORS_origins": [],
-        "username": "freqtrader",
+        "username": "freqtrader_hui",
         "password": "123"
     },
     "bot_name": "freqtrade",
     "initial_state": "running",
     "force_entry_enable": false,
     "internals": {
-        "process_throttle_secs": 1
-    }
+        "process_throttle_secs": 2
+    },
+    "ohlcv_candle_limit": 500
 }

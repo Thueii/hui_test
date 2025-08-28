@@ -1,9 +1,12 @@
 # user_data/strategies/meme_scalp.py
 from typing import Optional
 import pandas as pd
+import logging
 import talib.abstract as ta
 from freqtrade.strategy import IStrategy
 from freqtrade.persistence import Trade
+
+logger = logging.getLogger(__name__)
 
 
 class MemeScalp(IStrategy):
@@ -13,7 +16,6 @@ class MemeScalp(IStrategy):
     - Exit: place a LIMIT TP immediately after entry at (open_rate + ABS_TP)
             If unfilled for 1 minute -> cancel and emergency_exit MARKET.
     """
-
     # ===== Core pacing =====
     timeframe = "1m"
     process_only_new_candles = False  # 允许未收盘期间反复评估，更灵敏
@@ -36,7 +38,7 @@ class MemeScalp(IStrategy):
         "stoploss": "market",
 
         # 如需把止损挂到交易所，打开下面两行（可选，增强容错，机器人宕机也会触发止损）
-        # "stoploss_on_exchange": True,
+        "stoploss_on_exchange": False,
         # "stoploss_on_exchange_interval": 30,
     }
 
@@ -49,7 +51,7 @@ class MemeScalp(IStrategy):
     }
 
     # 你的“绝对价差”止盈（基于买入均价 open_rate）
-    ABS_TP = 0.0002
+    ABS_TP = 0.0004
 
     # ===== 指标 =====
     def populate_indicators(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
@@ -60,8 +62,13 @@ class MemeScalp(IStrategy):
         df["rsi_slope"] = df["rsi"] - df["rsi"].shift(1)
 
         # 波动：布林带宽度 / ATR百分比
-        bb = ta.BBANDS(df["close"], timeperiod=20, nbdevup=2, nbdevdn=2)
-        df["bb_width"] = (bb["upperband"] - bb["lowerband"]) / df["close"]
+        upper, middle, lower = ta.BBANDS(
+            df["close"], timeperiod=20, nbdevup=2.0, nbdevdn=2.0
+        )
+        df["bb_upper"] = upper
+        df["bb_middle"] = middle
+        df["bb_lower"] = lower
+        df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["close"]
         df["atr"] = ta.ATR(df["high"], df["low"], df["close"], timeperiod=14)
         df["atr_pct"] = df["atr"] / df["close"]
 
@@ -69,6 +76,8 @@ class MemeScalp(IStrategy):
 
     # ===== 入场：顺势 + 有波动 =====
     def populate_entry_trend(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+        logger.info("===============00")
+
         df["enter_long"] = 0
         df["enter_tag"] = ""
 
@@ -96,6 +105,7 @@ class MemeScalp(IStrategy):
         保守买入：按 current_rate + buffer 计算数量，确保买到的是100倍数个币。
         """
         if current_rate <= 0:
+            logger.info("===============11")
             return 0.0
 
         # 给买入价加一个 buffer，避免市价单实际成交价偏高时买超
@@ -108,6 +118,8 @@ class MemeScalp(IStrategy):
         amount = (int(raw_amount) // 100) * 100
 
         if amount <= 0:
+            logger.info("===============22")
+
             return 0.0
 
         # 换算回USDT金额
@@ -115,12 +127,15 @@ class MemeScalp(IStrategy):
 
         # 保证在范围内
         if stake < min_stake:
+            logger.info("===============33")
+
             return 0.0
         if stake > max_stake:
             stake = max_stake
             amount = (int(stake / buffer_price) // 100) * 100
             stake = amount * buffer_price
 
+        logger.info("===============44")
         return float(stake)
 
     # ===== 退出信号：入场后立即挂限价TP =====
@@ -145,16 +160,21 @@ class MemeScalp(IStrategy):
         pair: str,
         trade: Trade,
         current_time,
-        current_rate: float,
-        current_profit: float,
-        **kwargs,
+        current_rate: Optional[float]=None,  # 设为可选
+        current_profit: Optional[float]=None,  # 设为可选
+        ** kwargs,
     ) -> Optional[float]:
         """
-        返回这次退出要挂的“限价卖出价格”：买入均价 + 绝对价差
-        Freqtrade 会按交易所精度自动取整；如果需要更严格的步进对齐，可在此自行round。
+        返回限价卖出价格：买入均价 + 绝对价差（与版本无关）
+        兼容：某些 Freqtrade 版本不再显式传 current_rate / current_profit
         """
+        # 新版可能把 rate 放在 kwargs
+        if current_rate is None:
+            current_rate = kwargs.get("current_rate")
+
+        # 我们本就用 open_rate 做基准，不强依赖 current_rate
+        # target = ((0.03 / trade.amount) + 1.001 * trade.open_rate) / 0.999
         target = trade.open_rate + self.ABS_TP
-        # （可选）对齐精度：通常不必，框架会帮你按交易所精度处理
         return float(target)
 
     # 不使用规则化的 exit_trend（全部交给 custom_exit 系统）
