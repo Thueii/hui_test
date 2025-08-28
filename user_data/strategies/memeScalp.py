@@ -46,7 +46,7 @@ class MemeScalp(IStrategy):
     unfilledtimeout = {
         "entry": 2,
         "exit": 1,  # 限价卖单 1 分钟未成就超时
-        "exit_timeout_count": 1,  # 发生一次超时后，走 emergency_exit（市价）
+        "exit_timeout_count": 2,  # 发生一次超时后，走 emergency_exit（市价）
         "unit": "minutes",
     }
 
@@ -153,7 +153,9 @@ class MemeScalp(IStrategy):
         由 custom_exit_price 返回具体限价 -> 机器人马上在交易所挂限价卖单。
         """
         # 只要有持仓，就返回一个退出理由，让框架按 custom_exit_price 挂TP限价单
-        return "immediate_tp"
+        if trade.exit_order_status is None:
+            return "immediate_tp"
+        return None
 
     def custom_exit_price(
         self,
@@ -173,8 +175,8 @@ class MemeScalp(IStrategy):
             current_rate = kwargs.get("current_rate")
 
         # 我们本就用 open_rate 做基准，不强依赖 current_rate
-        # target = ((0.03 / trade.amount) + 1.001 * trade.open_rate) / 0.999
-        target = trade.open_rate + self.ABS_TP
+        target = ((0.03 / trade.amount) + 1.001 * trade.open_rate) / 0.999
+        # target = trade.open_rate + self.ABS_TP
         return float(target)
 
     # 不使用规则化的 exit_trend（全部交给 custom_exit 系统）
