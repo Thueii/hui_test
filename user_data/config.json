@@ -1,9 +1,11 @@
 {
-    "max_open_trades": 2,
+    "max_open_trades": 1,
     "fee": 0.001,
     "stake_currency": "USDT",
     "stake_amount": "unlimited",
+    /*
     "tradable_balance_ratio": 0.99,
+    */
     "fiat_display_currency": "USD",
     "dry_run": true,
     "dry_run_wallet": 1000,
@@ -11,12 +13,14 @@
     "use_exit_signal": true,
     "exit_profit_only": false,
     "ignore_roi_if_entry_signal": false,
+    /*
     "unfilledtimeout": {
         "entry": 10,
         "exit": 10,
         "exit_timeout_count": 0,
         "unit": "minutes"
     },
+    
     "entry_pricing": {
         "price_side": "other",
         "use_order_book": true,
@@ -32,6 +36,7 @@
         "use_order_book": true,
         "order_book_top": 1
     },
+    */
     "exchange": {
         "name": "binance",
         "key": "",
@@ -43,7 +48,7 @@
             "enableRateLimit": true,
             "rateLimit": 50
         },
-        "pair_whitelist": ["BIO/USDT", "MEME/USDT"],
+        "pair_whitelist": ["BIO/USDT"],
 
         "pair_blacklist": [
             /*
@@ -65,8 +70,7 @@
             "(HIFI|CETUS|ALPACA|SFP|T|TON|REI|CRV|GMT|METIS|KSM|USTC|ORDI|PEPE|STEEM)/.*"
             */
             "(BAND|BMT|TKO|PARTI)/.*"
-        ],
-        "fee": 0.001
+        ]
     },
     "pairlists": [
         /*
@@ -133,6 +137,6 @@
     "initial_state": "running",
     "force_entry_enable": false,
     "internals": {
-        "process_throttle_secs": 5
+        "process_throttle_secs": 1
     }
 }

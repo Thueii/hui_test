@@ -17,11 +17,11 @@ class MemeScalp(IStrategy):
     # ===== Core pacing =====
     timeframe = "1m"
     process_only_new_candles = False  # 允许未收盘期间反复评估，更灵敏
-    startup_candle_count = 50  # 够用以计算BB/ATR等
+    startup_candle_count = 1  # 够用以计算BB/ATR等, 之后设置成 50
 
     # ===== Risk / ROI =====
     minimal_roi = {"0": 1}  # 基本等于不靠 ROI 卖出（由自定义退出主导）
-    stoploss = -0.5  # 固定兜底止损（亏10%强平）
+    stoploss = -0.10  # 固定兜底止损（亏10%强平）
     trailing_stop = False  # 本策略由“入场即挂TP + 超时兜底”主导，不启用追踪止盈
 
     # ===== Order types =====
@@ -49,7 +49,7 @@ class MemeScalp(IStrategy):
     }
 
     # 你的“绝对价差”止盈（基于买入均价 open_rate）
-    ABS_TP = 0.000002
+    ABS_TP = 0.0002
 
     # ===== 指标 =====
     def populate_indicators(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
@@ -87,6 +87,41 @@ class MemeScalp(IStrategy):
         df.loc[cond, "enter_tag"] = "trend_vol"
 
         return df
+
+    def custom_stake_amount(
+        self, pair: str, current_time, current_rate: float,
+        proposed_stake: float, min_stake: float, max_stake: float, **kwargs
+        ) -> float:
+        """
+        保守买入：按 current_rate + buffer 计算数量，确保买到的是100倍数个币。
+        """
+        if current_rate <= 0:
+            return 0.0
+
+        # 给买入价加一个 buffer，避免市价单实际成交价偏高时买超
+        buffer_price = current_rate + 0.0005
+
+        # 理论可以买多少个 MEME
+        raw_amount = proposed_stake / buffer_price
+
+        # 向下取整为100的倍数
+        amount = (int(raw_amount) // 100) * 100
+
+        if amount <= 0:
+            return 0.0
+
+        # 换算回USDT金额
+        stake = amount * buffer_price
+
+        # 保证在范围内
+        if stake < min_stake:
+            return 0.0
+        if stake > max_stake:
+            stake = max_stake
+            amount = (int(stake / buffer_price) // 100) * 100
+            stake = amount * buffer_price
+
+        return float(stake)
 
     # ===== 退出信号：入场后立即挂限价TP =====
     def custom_exit(
