@@ -889,6 +889,7 @@ class FreqtradeBot(LoggingMixin):
         enter_limit_requested, stake_amount, leverage = self.get_valid_enter_price_and_stake(
             pair, price, stake_amount, trade_side, enter_tag, trade, mode, leverage_
         )
+        logger.info(f"===============111execute: amostake_amountunt: {stake_amount}, price: {enter_limit_requested}")
 
         if not stake_amount:
             return False
@@ -1177,6 +1178,7 @@ class FreqtradeBot(LoggingMixin):
             trade_amount=trade.stake_amount if trade else None,
         )
 
+        logger.info(f"===============22222execute: stake_amount: {stake_amount}, enter_limit_requested: {enter_limit_requested}")
         return enter_limit_requested, stake_amount, leverage
 
     def _notify_enter(
