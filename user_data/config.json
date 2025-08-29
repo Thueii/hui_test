@@ -55,7 +55,7 @@
             "enableRateLimit": true,
             "rateLimit": 100
         },
-        "pair_whitelist": ["BIO/USDT","MEME/USDT","PYTH/USDT"],
+        "pair_whitelist": ["BIO/USDT","DOGE/USDT","PYTH/USDT","MAV/USDT","CATI/USDT"],
 
         "pair_blacklist": [
             /*
