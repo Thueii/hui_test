@@ -907,8 +907,9 @@ class FreqtradeBot(LoggingMixin):
             )
         )
         logger.info(msg)
+        logger.info(f"=======msg msg msgUser denied entry for {msg}.")
         amount = (stake_amount / enter_limit_requested) * leverage
-        logger.info(f"===============execute: amount: {amount}, price: {enter_limit_requested}")
+        logger.info(f"=====execute: amount: {amount}, price: {enter_limit_requested}")
         order_type = ordertype or self.strategy.order_types["entry"]
 
         if mode == "initial" and not strategy_safe_wrapper(
