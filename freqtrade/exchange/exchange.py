@@ -973,7 +973,7 @@ class Exchange:
             self.precision_mode_price,
             rounding_mode=rounding_mode,
         )
-        logger.info("===============price_to_precision: price: {price}, precision: {x}")
+        logger.info(f"===============price_to_precision: price: {price}, precision: {x}")
         return x 
 
     def price_get_one_pip(self, pair: str, price: float) -> float:

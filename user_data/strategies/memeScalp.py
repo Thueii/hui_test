@@ -132,7 +132,7 @@ class MemeScalp(IStrategy):
             amount = (int(stake / buffer_price) // 100) * 100
             stake = amount * buffer_price
 
-        logger.info("===============amount: {amount}, price: {current_rate}")
+        logger.info(f"===============amount: {amount}, price: {current_rate}")
         return float(stake)
 
     # ===== 退出信号：入场后立即挂限价TP =====
