@@ -45,8 +45,8 @@ class MemeScalp(IStrategy):
     # 限价卖单超时设置：1分钟没成交 -> 触发一次超时 -> emergency_exit=market 兜底
     unfilledtimeout = {
         "entry": 2,
-        "exit": 1,  # 限价卖单 1 分钟未成就超时
-        "exit_timeout_count": 2,  # 发生一次超时后，走 emergency_exit（市价）
+        "exit": 2,  # 限价卖单 1 分钟未成就超时
+        "exit_timeout_count": 1,  # 发生一次超时后，走 emergency_exit（市价）
         "unit": "minutes",
     }
 
@@ -102,24 +102,23 @@ class MemeScalp(IStrategy):
         proposed_stake: float, min_stake: float, max_stake: float, **kwargs
         ) -> float:
         """
+        proposed_stake: 现有的钱
+        max_stake: 交易所允许的最大下单金额,是交易所返回的,不是需要我们配置的
         保守买入：按 current_rate + buffer 计算数量，确保买到的是100倍数个币。
         """
         if current_rate <= 0:
-            logger.info("===============11")
             return 0.0
 
         # 给买入价加一个 buffer，避免市价单实际成交价偏高时买超
-        buffer_price = current_rate + 0.0005
+        buffer_price = current_rate + 0.0005 
 
-        # 理论可以买多少个 MEME
+        # 理论可以买多少个币
         raw_amount = proposed_stake / buffer_price
 
         # 向下取整为100的倍数
         amount = (int(raw_amount) // 100) * 100
 
         if amount <= 0:
-            logger.info("===============22")
-
             return 0.0
 
         # 换算回USDT金额
@@ -127,15 +126,13 @@ class MemeScalp(IStrategy):
 
         # 保证在范围内
         if stake < min_stake:
-            logger.info("===============33")
-
             return 0.0
+
         if stake > max_stake:
             stake = max_stake
             amount = (int(stake / buffer_price) // 100) * 100
             stake = amount * buffer_price
 
-        logger.info("===============44")
         return float(stake)
 
     # ===== 退出信号：入场后立即挂限价TP =====
