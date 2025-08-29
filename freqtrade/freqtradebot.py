@@ -66,7 +66,6 @@ from freqtrade.util import FtPrecise, MeasureTime, PeriodicCache, dt_from_ts, dt
 from freqtrade.util.migrations.binance_mig import migrate_binance_futures_names
 from freqtrade.wallets import Wallets
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -325,7 +324,7 @@ class FreqtradeBot(LoggingMixin):
             }
             self.rpc.send_msg(msg)
 
-    def _refresh_active_whitelist(self, trades: list[Trade] | None = None) -> list[str]:
+    def _refresh_active_whitelist(self, trades: list[Trade] | None=None) -> list[str]:
         """
         Refresh active whitelist from pairlist and extend it with
         pairs that have open trades.
@@ -864,14 +863,14 @@ class FreqtradeBot(LoggingMixin):
         self,
         pair: str,
         stake_amount: float,
-        price: float | None = None,
+        price: float | None=None,
         *,
-        is_short: bool = False,
-        ordertype: str | None = None,
-        enter_tag: str | None = None,
-        trade: Trade | None = None,
-        mode: EntryExecuteMode = "initial",
-        leverage_: float | None = None,
+        is_short: bool=False,
+        ordertype: str | None=None,
+        enter_tag: str | None=None,
+        trade: Trade | None=None,
+        mode: EntryExecuteMode="initial",
+        leverage_: float | None=None,
     ) -> bool:
         """
         Executes an entry for the given pair
@@ -908,6 +907,7 @@ class FreqtradeBot(LoggingMixin):
         )
         logger.info(msg)
         amount = (stake_amount / enter_limit_requested) * leverage
+        logger.info("===============execute: amount: {amount}, price: {enter_limit_requested}")
         order_type = ordertype or self.strategy.order_types["entry"]
 
         if mode == "initial" and not strategy_safe_wrapper(
@@ -1184,8 +1184,8 @@ class FreqtradeBot(LoggingMixin):
         trade: Trade,
         order: Order,
         order_type: str | None,
-        fill: bool = False,
-        sub_trade: bool = False,
+        fill: bool=False,
+        sub_trade: bool=False,
     ) -> None:
         """
         Sends rpc notification when a entry order occurred.
@@ -1234,7 +1234,7 @@ class FreqtradeBot(LoggingMixin):
         self.rpc.send_msg(msg)
 
     def _notify_enter_cancel(
-        self, trade: Trade, order_type: str, reason: str, sub_trade: bool = False
+        self, trade: Trade, order_type: str, reason: str, sub_trade: bool=False
     ) -> None:
         """
         Sends rpc notification when a entry order cancel occurred.
@@ -1596,7 +1596,7 @@ class FreqtradeBot(LoggingMixin):
                         self.replace_order(order, open_order, trade)
 
     def handle_cancel_order(
-        self, order: CcxtOrder, order_obj: Order, trade: Trade, reason: str, replacing: bool = False
+        self, order: CcxtOrder, order_obj: Order, trade: Trade, reason: str, replacing: bool=False
     ) -> bool:
         """
         Check if current analyzed order timed out and cancel if necessary.
@@ -1621,7 +1621,7 @@ class FreqtradeBot(LoggingMixin):
             return canceled
 
     def emergency_exit(
-        self, trade: Trade, price: float, sub_trade_amt: float | None = None
+        self, trade: Trade, price: float, sub_trade_amt: float | None=None
     ) -> None:
         try:
             self.execute_trade_exit(
@@ -1718,7 +1718,7 @@ class FreqtradeBot(LoggingMixin):
         new_order_price: float | None,
         is_entry: bool,
         cancel_reason: str,
-        replacing: bool = False,
+        replacing: bool=False,
     ) -> None:
         """
         Cancel existing order if new price is supplied, and if the cancel is successful,
@@ -1764,7 +1764,7 @@ class FreqtradeBot(LoggingMixin):
                 self.replace_order_failed(trade, f"Could not replace order for {trade}.")
 
     def cancel_open_orders_of_trade(
-        self, trade: Trade, sides: list[str], reason: str, replacing: bool = False
+        self, trade: Trade, sides: list[str], reason: str, replacing: bool=False
     ) -> None:
         """
         Cancel trade orders of specified sides that are currently open
@@ -1839,7 +1839,7 @@ class FreqtradeBot(LoggingMixin):
         order: CcxtOrder,
         order_obj: Order,
         reason: str,
-        replacing: bool | None = False,
+        replacing: bool | None=False,
     ) -> bool:
         """
         entry cancel - cancel order
@@ -2040,9 +2040,9 @@ class FreqtradeBot(LoggingMixin):
         limit: float,
         exit_check: ExitCheckTuple,
         *,
-        exit_tag: str | None = None,
-        ordertype: str | None = None,
-        sub_trade_amt: float | None = None,
+        exit_tag: str | None=None,
+        ordertype: str | None=None,
+        sub_trade_amt: float | None=None,
     ) -> bool:
         """
         Executes a trade exit for the given trade and limit
@@ -2157,9 +2157,9 @@ class FreqtradeBot(LoggingMixin):
         self,
         trade: Trade,
         order_type: str | None,
-        fill: bool = False,
-        sub_trade: bool = False,
-        order: Order | None = None,
+        fill: bool=False,
+        sub_trade: bool=False,
+        order: Order | None=None,
     ) -> None:
         """
         Sends rpc notification when a sell occurred.
@@ -2220,7 +2220,7 @@ class FreqtradeBot(LoggingMixin):
         self.rpc.send_msg(msg)
 
     def _notify_exit_cancel(
-        self, trade: Trade, order_type: str, reason: str, order_id: str, sub_trade: bool = False
+        self, trade: Trade, order_type: str, reason: str, order_id: str, sub_trade: bool=False
     ) -> None:
         """
         Sends rpc notification when a sell cancel occurred.
@@ -2288,10 +2288,10 @@ class FreqtradeBot(LoggingMixin):
         self,
         trade: Trade,
         order_id: str | None,
-        action_order: CcxtOrder | None = None,
+        action_order: CcxtOrder | None=None,
         *,
-        stoploss_order: bool = False,
-        send_msg: bool = True,
+        stoploss_order: bool=False,
+        send_msg: bool=True,
     ) -> bool:
         """
         Checks trades with open orders and updates the amount if necessary

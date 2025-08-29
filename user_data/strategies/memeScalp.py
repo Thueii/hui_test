@@ -5,6 +5,7 @@ import logging
 import talib.abstract as ta
 from freqtrade.strategy import IStrategy
 from freqtrade.persistence import Trade
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class MemeScalp(IStrategy):
 
     # ===== Risk / ROI =====
     minimal_roi = {"0": 1}  # 基本等于不靠 ROI 卖出（由自定义退出主导）
-    stoploss = -0.10  # 固定兜底止损（亏10%强平）
+    stoploss = -0.002  # 固定兜底止损（亏10%强平）
     trailing_stop = False  # 本策略由“入场即挂TP + 超时兜底”主导，不启用追踪止盈
 
     # ===== Order types =====
@@ -45,7 +46,7 @@ class MemeScalp(IStrategy):
     # 限价卖单超时设置：1分钟没成交 -> 触发一次超时 -> emergency_exit=market 兜底
     unfilledtimeout = {
         "entry": 2,
-        "exit": 2,  # 限价卖单 1 分钟未成就超时
+        "exit": 1,  # 限价卖单 2 分钟未成就超时
         "exit_timeout_count": 1,  # 发生一次超时后，走 emergency_exit（市价）
         "unit": "minutes",
     }
@@ -76,8 +77,6 @@ class MemeScalp(IStrategy):
 
     # ===== 入场：顺势 + 有波动 =====
     def populate_entry_trend(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        logger.info("===============00")
-
         df["enter_long"] = 0
         df["enter_tag"] = ""
 
@@ -133,6 +132,7 @@ class MemeScalp(IStrategy):
             amount = (int(stake / buffer_price) // 100) * 100
             stake = amount * buffer_price
 
+        logger.info("===============amount: {amount}, price: {current_rate}")
         return float(stake)
 
     # ===== 退出信号：入场后立即挂限价TP =====
@@ -173,8 +173,10 @@ class MemeScalp(IStrategy):
 
         # 我们本就用 open_rate 做基准，不强依赖 current_rate
         target = ((0.03 / trade.amount) + 1.001 * trade.open_rate) / 0.999
+        target_rounded = math.ceil(target * 10000) / 10000.0
+
         # target = trade.open_rate + self.ABS_TP
-        return float(target)
+        return float(target_rounded)
 
     # 不使用规则化的 exit_trend（全部交给 custom_exit 系统）
     def populate_exit_trend(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
