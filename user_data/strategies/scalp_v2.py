@@ -24,7 +24,7 @@ class ScalpV2(IStrategy):
     informative_timeframes = {"5m": "5m"}
 
     process_only_new_candles = False  # 允许未收盘期间反复评估，更灵敏
-    startup_candle_count = 1  # 够用以计算BB/ATR等, 之后设置成 50
+    startup_candle_count = 5  # 够用以计算BB/ATR等, 之后设置成 50
 
     # ===== Risk / ROI =====
     minimal_roi = {"0": 1}  # 基本等于不靠 ROI 卖出（由自定义退出主导）
@@ -110,26 +110,28 @@ class ScalpV2(IStrategy):
     def populate_indicators(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         pair = metadata["pair"]
         if not dataframe.empty:
-            # 取“正在形成”的最后一行快照
             last_close = float(dataframe["close"].iloc[-1])
-            # 注意：这里的 volume 是“该1m烛的累计量”，非全局累计
             last_vol_cum = float(dataframe["volume"].iloc[-1])
-
-            # 更新秒级缓冲
             self._update_second_buffer(pair, last_close, last_vol_cum)
-
-            # 计算秒级指标，只写到最后一行
             mvol, mratio = self._micro_metrics(pair)
             dataframe.loc[dataframe.index[-1], "micro_volatility_10s"] = mvol
             dataframe.loc[dataframe.index[-1], "micro_vol_ratio_10s"] = mratio
 
-        # 给缺失行填0，避免后续条件判断报NaN
         dataframe["micro_volatility_10s"] = dataframe.get("micro_volatility_10s", 0).fillna(0.0)
         dataframe["micro_vol_ratio_10s"] = dataframe.get("micro_vol_ratio_10s", 0).fillna(0.0)
-        inf_tf = self.dp.get_pair_dataframe(pair=metadata['pair'], timeframe="5m")
-        # 举例：用 5m 均线判断趋势
-        inf_tf['ma2'] = ta.SMA(inf_tf['close'], timeperiod=2)
-        dataframe = merge_informative_pair(dataframe, inf_tf, self.timeframe, "5m", ffill=True)
+
+        # ✅ 用 5m，且加“空表/缺列保护”
+        inf_tf = self.dp.get_pair_dataframe(pair=pair, timeframe="5m")
+        if inf_tf is not None and (not inf_tf.empty) and {"date", "close"}.issubset(inf_tf.columns):
+            inf_tf["ma2_5m"] = ta.SMA(inf_tf["close"], timeperiod=2)
+            use_cols = inf_tf[["date", "close", "ma2_5m"]].rename(columns={"close": "close_5m"})
+            dataframe = dataframe.merge(use_cols, on="date", how="left")
+            dataframe[["close_5m", "ma2_5m"]] = dataframe[["close_5m", "ma2_5m"]].ffill()
+        else:
+            # 占位，避免刚启动时报错
+            dataframe["close_5m"] = dataframe.get("close_5m", dataframe["close"])
+            dataframe["ma2_5m"] = dataframe.get("ma2_5m", dataframe["close"])
+
         return dataframe
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
@@ -137,7 +139,7 @@ class ScalpV2(IStrategy):
         cond = (
             (dataframe["micro_volatility_10s"] > 0.0040) & 
             (dataframe["micro_vol_ratio_10s"] > 1.8) & 
-            (dataframe["close_5m"] > dataframe["ma5_2m"])
+            (dataframe["close_5m"] > dataframe["ma2_5m"])  # ✅ 顺势过滤用 5m
         )
         dataframe.loc[cond, "enter_long"] = 1
         return dataframe
