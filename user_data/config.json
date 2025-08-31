@@ -1,15 +1,18 @@
 {
     "max_open_trades": 1,
+    "timeframe": "1m",
     "fee": 0.001,
     "stake_currency": "USDT",
     "stake_amount": "unlimited",
+    "trailing_stop": false,
     /*
     "tradable_balance_ratio": 0.99,
     */
     "fiat_display_currency": "USD",
     "dry_run": true,
     "dry_run_wallet": 1000,
-    "cancel_open_orders_on_exit": false,
+    // 是整个进程结束的时候,不是 _exit 信号的时候
+    "cancel_open_orders_on_exit": true,
     "use_exit_signal": true,
     "exit_profit_only": false,
     "ignore_roi_if_entry_signal": false,
@@ -55,7 +58,24 @@
             "enableRateLimit": true,
             "rateLimit": 100
         },
-        "pair_whitelist": ["BIO/USDT","DOGE/USDT","PYTH/USDT","MAV/USDT","CATI/USDT"],
+        "pair_whitelist": [
+            // "BIO/USDT",
+            // "DOGE/USDT",
+            // "PYTH/USDT",
+            // "MAV/USDT",
+            // "CATI/USDT",
+            // "A2Z/USDT",
+            // "HEI/USDT",
+            // "W/USDT",
+            // // "MITO/USTD",
+            // "SPK/USDT",
+            // "HOOK/USDT",
+            // "HYPER/USDT",
+            // "SKL/USDT",
+            // "MITO/USDT",
+            // "JOE/USDT",
+            // "POL/USDT"
+        ],
 
         "pair_blacklist": [
             /*
@@ -80,7 +100,7 @@
         ]
     },
     "pairlists": [
-        /*
+        
         {
             "method": "VolumePairList",
             "number_assets": 110,
@@ -92,10 +112,10 @@
             "min_value": -15,
             "max_value": 150
         },
-        {
-            "method": "AgeFilter",
-            "min_days_listed": 1
-        },
+        // {
+        //     "method": "AgeFilter",
+        //     "min_days_listed": 1
+        // },
         {
             "method": "ShuffleFilter",
             "seed": 42
@@ -103,11 +123,8 @@
         {
             "method": "FullTradesFilter"
         }
-        */
-        { "method": "StaticPairList" },
-        {
-            "method": "FullTradesFilter"
-        }
+
+        // {"method": "StaticPairList"}
     ],
     "edge": {
         "enabled": false,
@@ -144,7 +161,7 @@
     "initial_state": "running",
     "force_entry_enable": false,
     "internals": {
-        "process_throttle_secs": 2
+        "process_throttle_secs": 1
     },
     "ohlcv_candle_limit": 500
 }

@@ -1170,6 +1170,7 @@ class FreqtradeBot(LoggingMixin):
                 entry_tag=entry_tag,
                 side=trade_side,
             )
+            logger.info(f"===============5555execute: stake_amount: {stake_amount}, enter_limit_requested: {enter_limit_requested}")
 
         stake_amount = self.wallets.validate_stake_amount(
             pair=pair,
@@ -1817,13 +1818,14 @@ class FreqtradeBot(LoggingMixin):
         """
         if trade.has_open_orders:
             oo = trade.select_order(side, True)
-            if oo is not None:
-                if price == oo.price and side == oo.side and amount == oo.amount:
-                    logger.info(
-                        f"A similar open order was found for {trade.pair}. "
-                        f"Keeping existing {trade.exit_side} order. {price=},  {amount=}"
-                    )
-                    return True
+            # self-change:
+            # if oo is not None:
+                # if price == oo.price and side == oo.side and amount == oo.amount:
+                #     logger.info(
+                #         f"A similar open order was found for {trade.pair}. "
+                #         f"Keeping existing {trade.exit_side} order. {price=},  {amount=}"
+                #     )
+                #     return True
             # cancel open orders of this trade if order is different
             self.cancel_open_orders_of_trade(
                 trade,

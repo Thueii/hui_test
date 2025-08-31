@@ -1,5 +1,6 @@
 # Freqtrade rules
 *.sqlite
+.venv311/
 user_data/hyperopt_results
 user_data/backtest_results
 user_data/data/binance

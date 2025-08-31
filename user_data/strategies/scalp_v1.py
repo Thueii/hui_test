@@ -10,7 +10,7 @@ import math
 logger = logging.getLogger(__name__)
 
 
-class MemeScalp(IStrategy):
+class ScalpV1(IStrategy):
     """
     MEME/USDT scalping (1m):
     - Entry: uptrend + expanded volatility
@@ -24,7 +24,8 @@ class MemeScalp(IStrategy):
 
     # ===== Risk / ROI =====
     minimal_roi = {"0": 1}  # 基本等于不靠 ROI 卖出（由自定义退出主导）
-    stoploss = -0.002  # 固定兜底止损（亏10%强平）
+    stoploss = -0.99  # 固定兜底止损（亏10%强平）
+    use_custom_stoploss = True  # 打开自定义止损
     trailing_stop = False  # 本策略由“入场即挂TP + 超时兜底”主导，不启用追踪止盈
 
     # ===== Order types =====
@@ -46,7 +47,7 @@ class MemeScalp(IStrategy):
     # 限价卖单超时设置：1分钟没成交 -> 触发一次超时 -> emergency_exit=market 兜底
     unfilledtimeout = {
         "entry": 2,
-        "exit": 1,  # 限价卖单 2 分钟未成就超时
+        "exit": 2,  # 限价卖单 2 分钟未成就超时
         "exit_timeout_count": 1,  # 发生一次超时后，走 emergency_exit（市价）
         "unit": "minutes",
     }
@@ -121,7 +122,7 @@ class MemeScalp(IStrategy):
             return 0.0
 
         # 换算回USDT金额
-        stake = amount * buffer_price
+        stake = amount * current_rate  # 换回 current_rate
 
         # 保证在范围内
         if stake < min_stake:
@@ -132,7 +133,7 @@ class MemeScalp(IStrategy):
             amount = (int(stake / buffer_price) // 100) * 100
             stake = amount * buffer_price
 
-        logger.info(f"===============amount: {amount}, price: {current_rate}")
+        logger.info(f"===============amount: {amount}, price: {current_rate}, stake: {stake}")
         return float(stake)
 
     # ===== 退出信号：入场后立即挂限价TP =====
@@ -145,13 +146,20 @@ class MemeScalp(IStrategy):
         current_profit: float,
         **kwargs,
     ) -> Optional[str]:
-        """
-        方法A：不等待“到价再挂单”，而是开仓后立即给出退出信号，
-        由 custom_exit_price 返回具体限价 -> 机器人马上在交易所挂限价卖单。
-        """
-        # 只要有持仓，就返回一个退出理由，让框架按 custom_exit_price 挂TP限价单
+        # 只在还没有退出订单时，挂一次TP
+        GRACE_SECONDS = 30  # 建仓后前 30 秒不触发“亏损退出”
+        PANIC_SL = -0.0015  # -0.15%
+
+        # 1) 只在没有任何退出单时，挂一次限价 TP（你原来的逻辑）
         if trade.exit_order_status is None:
-            return "immediate_tp"
+            return "immediate_tp"  # 你的 TP 标签，不改变
+
+        # # 2) 过了 30 秒，若浮亏超过阈值，则立刻触发退出（市价）
+        # held_seconds = (current_time - trade.open_date_utc).total_seconds()
+        # if held_seconds >= GRACE_SECONDS and current_profit <= PANIC_SL:
+        #     # 提示：部分版本可返回 ("exit_signal", "panic_sl")
+        #     return "panic_sl"      # 触发即走，Freqtrade 会撤掉原 TP，再下市价平仓
+
         return None
 
     def custom_exit_price(
@@ -164,22 +172,66 @@ class MemeScalp(IStrategy):
         ** kwargs,
     ) -> Optional[float]:
         """
-        返回限价卖出价格：买入均价 + 绝对价差（与版本无关）
-        兼容：某些 Freqtrade 版本不再显式传 current_rate / current_profit
+        返回限价卖出价格：
+        - 至少覆盖双边手续费 (fee * 2)
+        - 再加一个额外 buffer (extra_profit_pct)
         """
-        # 新版可能把 rate 放在 kwargs
-        if current_rate is None:
-            current_rate = kwargs.get("current_rate")
+        # 获取交易所配置的手续费率 (默认0.001=0.1%)
+        fee = 0.001
 
-        # 我们本就用 open_rate 做基准，不强依赖 current_rate
-        target = ((0.03 / trade.amount) + 1.001 * trade.open_rate) / 0.999
-        target_rounded = math.ceil(target * 10000) / 10000.0
+        # 需要的最小涨幅 = 双边费率
+        min_required = fee * 2
 
-        # target = trade.open_rate + self.ABS_TP
-        return float(target_rounded)
+        # 额外想要的净利幅度 (比如 0.001=0.1%)
+        extra_profit_pct = 0.000008
+
+        # 最终止盈幅度
+        tp_pct = min_required + extra_profit_pct
+        
+        # 目标价
+        target_origin = trade.open_rate * (1 + tp_pct)
+        target = math.ceil(target_origin * 100000) / 100000.0
+
+        # # 对齐到交易所精度
+        # try:
+        #     m = self.dp.market(pair)  # 获取交易所市场规则
+        #     tick = m["limits"]["price"].get("min") or 0
+        #     if tick > 0:
+        #         target = (int(target / tick)) * tick
+
+        # except Exception:
+        #     pass  # 如果 dp 不可用，就不对齐
+        logger.info(f"=======buy: {trade.open_rate}, equal_fee_price: {(1+min_required) * trade.open_rate}, add_profit_price_origin: {target_origin}, target: {target}")
+        return float(target)
 
     # 不使用规则化的 exit_trend（全部交给 custom_exit 系统）
     def populate_exit_trend(self, df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         df["exit_long"] = 0
         df["exit_tag"] = ""
         return df
+
+    def custom_stoploss(
+        self,
+        pair: str,
+        trade,
+        current_time,
+        current_rate,
+        current_profit,
+        **kwargs
+    ) -> float:
+        """
+        返回当前应生效的止损（负数，单位=相对开仓价的比例）
+        需求：建仓后 30 秒内不触发（给一个极宽的止损以“等效忽略”）
+        """
+        # 计算建仓至今的秒数
+        held_seconds = (current_time - trade.open_date_utc).total_seconds()
+
+        GRACE_SECONDS = 30
+        REAL_STOPLOSS = -0.0015  # 你的真实止损（-0.15%）
+
+        if held_seconds < GRACE_SECONDS:
+            # 宽限期内：给一个极宽的止损，基本不可能被打到
+            return -0.99  # -99%，等效“先不止损”
+        else:
+            # 宽限期结束：恢复到真实止损
+            return REAL_STOPLOSS
