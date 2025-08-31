@@ -3,7 +3,7 @@ from typing import Optional
 import pandas as pd
 import logging
 import talib.abstract as ta
-from freqtrade.strategy import IStrategy
+from freqtrade.strategy import IStrategy, merge_informative_pair
 from freqtrade.persistence import Trade
 import math
 from collections import defaultdict, deque
@@ -21,6 +21,8 @@ class ScalpV2(IStrategy):
     """
     # ===== Core pacing =====
     timeframe = "1m"
+    informative_timeframes = {"5m": "5m"}
+
     process_only_new_candles = False  # 允许未收盘期间反复评估，更灵敏
     startup_candle_count = 1  # 够用以计算BB/ATR等, 之后设置成 50
 
@@ -124,13 +126,18 @@ class ScalpV2(IStrategy):
         # 给缺失行填0，避免后续条件判断报NaN
         dataframe["micro_volatility_10s"] = dataframe.get("micro_volatility_10s", 0).fillna(0.0)
         dataframe["micro_vol_ratio_10s"] = dataframe.get("micro_vol_ratio_10s", 0).fillna(0.0)
+        inf_tf = self.dp.get_pair_dataframe(pair=metadata['pair'], timeframe="5m")
+        # 举例：用 5m 均线判断趋势
+        inf_tf['ma2'] = ta.SMA(inf_tf['close'], timeperiod=2)
+        dataframe = merge_informative_pair(dataframe, inf_tf, self.timeframe, "5m", ffill=True)
         return dataframe
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         # 例：10秒内价差超过 0.12%，且 10秒放量是60秒均值的1.5倍
         cond = (
             (dataframe["micro_volatility_10s"] > 0.0040) & 
-            (dataframe["micro_vol_ratio_10s"] > 1.8)
+            (dataframe["micro_vol_ratio_10s"] > 1.8) & 
+            (dataframe["close_5m"] > dataframe["ma5_2m"])
         )
         dataframe.loc[cond, "enter_long"] = 1
         return dataframe
