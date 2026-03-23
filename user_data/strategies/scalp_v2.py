@@ -147,10 +147,15 @@ class ScalpV2(IStrategy):
         return dataframe
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        # 例：10秒内价差超过 0.4%，且 10秒放量是60秒均值的1.8倍，且5m顺势
+        # [CHANGED] 原来有两个条件：micro_vol > 0.004 且 ratio > 1.8
+        # 但 ratio 的值只有 0.00 或 6.00（因为 _secbuf 用的是 1m K线累计量，不是逐笔数据）
+        # ratio 要么是 0 要么是 6，实际上等于没有过滤效果
+        # 所以去掉 ratio 条件，改为把 micro_vol 阈值从 0.004 提高到 0.006
+        # 确保只在价格真正剧烈波动时才入场，减少假突破
         cond = (
-            (dataframe["micro_volatility_10s"] > 0.0040)
-            & (dataframe["micro_vol_ratio_10s"] > 1.8)
+            (
+                dataframe["micro_volatility_10s"] > 0.006
+            )  # [CHANGED] 原来是 0.004，提高阈值减少假信号
             & (dataframe["close_5m"] > dataframe["ma2_5m"])  # 顺势过滤用 5m
         )
         dataframe.loc[cond, "enter_long"] = 1

@@ -1,3 +1,7 @@
+# 敏感配置文件，包含 Telegram token、API 密钥等，不提交到 git
+user_data/config.json
+user_data/config_backtest.json
+
 # Freqtrade rules
 *.sqlite
 .venv311/
