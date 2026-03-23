@@ -1,5 +1,5 @@
 {
-    "max_open_trades": 1,
+    "max_open_trades": 2,
     "timeframe": "1m",
     "fee": 0.001,
     "stake_currency": "USDT",
@@ -59,6 +59,11 @@
             "rateLimit": 100
         },
         "pair_whitelist": [
+            "NIGHT/USDT",
+            "DOGE/USDT",
+            "BANANAS31/USDT",
+            "ADA/USDT",
+            "SUI/USDT"
             // "BIO/USDT",
             // "DOGE/USDT",
             // "PYTH/USDT",
@@ -66,8 +71,8 @@
             // "CATI/USDT",
             // "A2Z/USDT",
             // "HEI/USDT",
-            // "W/USDT",
-            // // "MITO/USTD",
+            // "W/USDT"
+            // "MITO/USTD",
             // "SPK/USDT",
             // "HOOK/USDT",
             // "HYPER/USDT",
@@ -100,31 +105,30 @@
         ]
     },
     "pairlists": [
-        
-        {
-            "method": "VolumePairList",
-            "number_assets": 110,
-            "sort_key": "quoteVolume"
-        },
-        {
-            "method": "PercentChangePairList",
-            "number_assets": 110,
-            "min_value": -15,
-            "max_value": 150
-        },
+
+        // {
+        //     "method": "VolumePairList",
+        //     "number_assets": 110,
+        //     "sort_key": "quoteVolume"
+        // },
+        // {
+        //     "method": "PercentChangePairList",
+        //     "number_assets": 110,
+        //     "min_value": -15,
+        //     "max_value": 150
+        // },
         // {
         //     "method": "AgeFilter",
         //     "min_days_listed": 1
         // },
-        {
-            "method": "ShuffleFilter",
-            "seed": 42
-        },
-        {
-            "method": "FullTradesFilter"
-        }
-
-        // {"method": "StaticPairList"}
+        // {
+        //     "method": "ShuffleFilter",
+        //     "seed": 42
+        // },
+        // {
+        //     "method": "FullTradesFilter"
+        // },
+        {"method": "StaticPairList"}
     ],
     "edge": {
         "enabled": false,
@@ -142,7 +146,7 @@
     },
     "telegram": {
         "enabled": true,
-        "token": "",
+        "token": "8280580755:AAFfQcRzQT4CxrARask4SJcSMU2Iwlgb3lU",
         "chat_id": "8234937363"
     },
     "api_server": {

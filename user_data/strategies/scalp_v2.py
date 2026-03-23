@@ -1,13 +1,17 @@
 # user_data/strategies/meme_scalp.py
-from typing import Optional
-import pandas as pd
+# ruff: noqa: RUF002, RUF003
 import logging
-import talib.abstract as ta
-from freqtrade.strategy import IStrategy, merge_informative_pair
-from freqtrade.persistence import Trade
 import math
 from collections import defaultdict, deque
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime
+from typing import Any
+
+import pandas as pd
+import talib.abstract as ta
+
+from freqtrade.persistence import Trade
+from freqtrade.strategy import IStrategy
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +23,26 @@ class ScalpV2(IStrategy):
     - Exit: place a LIMIT TP immediately after entry at (open_rate + ABS_TP)
             If unfilled for 1 minute -> cancel and emergency_exit MARKET.
     """
+
     # ===== Core pacing =====
     timeframe = "1m"
-    informative_timeframes = {"5m": "5m"}
 
     process_only_new_candles = False  # 允许未收盘期间反复评估，更灵敏
     startup_candle_count = 5  # 够用以计算BB/ATR等, 之后设置成 50
+
+    # [BUG FIX] 原来写的是 informative_timeframes = {"5m": "5m"}，但这个属性
+    # freqtrade 根本不识别，导致 5m 数据从未被订阅，日志一直报 "No data found for (xxx, 5m)"
+    # 正确做法是重写 informative_pairs() 方法，freqtrade 启动时会调用它来决定订阅哪些额外数据
+    def informative_pairs(self):
+        """告诉 freqtrade 需要为白名单每个交易对额外缓存 5m K线"""
+        pairs = self.dp.current_whitelist()
+        return [(pair, "5m") for pair in pairs]
 
     # ===== Risk / ROI =====
     minimal_roi = {"0": 1}  # 基本等于不靠 ROI 卖出（由自定义退出主导）
     stoploss = -0.99  # 固定兜底止损（亏10%强平）
     use_custom_stoploss = True  # 打开自定义止损
-    trailing_stop = False  # 本策略由“入场即挂TP + 超时兜底”主导，不启用追踪止盈
+    trailing_stop = False  # 本策略由"入场即挂TP + 超时兜底"主导，不启用追踪止盈
 
     # ===== Order types =====
     # - 入场用市价，保证成交
@@ -42,7 +54,6 @@ class ScalpV2(IStrategy):
         "force_entry": "market",
         "force_exit": "market",
         "stoploss": "market",
-
         # 如需把止损挂到交易所，打开下面两行（可选，增强容错，机器人宕机也会触发止损）
         "stoploss_on_exchange": False,
         # "stoploss_on_exchange_interval": 30,
@@ -58,10 +69,10 @@ class ScalpV2(IStrategy):
 
     # ===== 指标 =====
     # 秒级缓冲：每个交易对一条 deque，存 (ts, price, vol_cum)
-    _secbuf = defaultdict(lambda: deque(maxlen=120))
+    _secbuf: dict = defaultdict(lambda: deque(maxlen=120))
 
     def _update_second_buffer(self, pair: str, price: float, vol_cum: float):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         buf = self._secbuf[pair]
 
         # 只在时间推进时写入（避免同一秒重复）
@@ -89,7 +100,7 @@ class ScalpV2(IStrategy):
         last_price = prices10[-1]
         micro_volatility_10s = (max(prices10) - min(prices10)) / last_price if last_price else 0.0
 
-        # 体量：把“当前K线累计量”的增量近似当作每秒成交量
+        # 体量：把"当前K线累计量"的增量近似当作每秒成交量
         def vol_delta(seq):
             # 用相邻快照的差分求和
             total = 0.0
@@ -114,13 +125,14 @@ class ScalpV2(IStrategy):
             last_vol_cum = float(dataframe["volume"].iloc[-1])
             self._update_second_buffer(pair, last_close, last_vol_cum)
             mvol, mratio = self._micro_metrics(pair)
+            logger.info(f"[{pair}] micro_vol={mvol:.6f}(need>0.004) ratio={mratio:.2f}(need>1.8)")
             dataframe.loc[dataframe.index[-1], "micro_volatility_10s"] = mvol
             dataframe.loc[dataframe.index[-1], "micro_vol_ratio_10s"] = mratio
 
         dataframe["micro_volatility_10s"] = dataframe.get("micro_volatility_10s", 0).fillna(0.0)
         dataframe["micro_vol_ratio_10s"] = dataframe.get("micro_vol_ratio_10s", 0).fillna(0.0)
 
-        # ✅ 用 5m，且加“空表/缺列保护”
+        # 用 5m，且加"空表/缺列保护"
         inf_tf = self.dp.get_pair_dataframe(pair=pair, timeframe="5m")
         if inf_tf is not None and (not inf_tf.empty) and {"date", "close"}.issubset(inf_tf.columns):
             inf_tf["ma2_5m"] = ta.SMA(inf_tf["close"], timeperiod=2)
@@ -135,29 +147,41 @@ class ScalpV2(IStrategy):
         return dataframe
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        # 例：10秒内价差超过 0.12%，且 10秒放量是60秒均值的1.5倍
+        # 例：10秒内价差超过 0.4%，且 10秒放量是60秒均值的1.8倍，且5m顺势
         cond = (
-            (dataframe["micro_volatility_10s"] > 0.0040) & 
-            (dataframe["micro_vol_ratio_10s"] > 1.8) & 
-            (dataframe["close_5m"] > dataframe["ma2_5m"])  # ✅ 顺势过滤用 5m
+            (dataframe["micro_volatility_10s"] > 0.0040)
+            & (dataframe["micro_vol_ratio_10s"] > 1.8)
+            & (dataframe["close_5m"] > dataframe["ma2_5m"])  # 顺势过滤用 5m
         )
         dataframe.loc[cond, "enter_long"] = 1
         return dataframe
 
+    # [BUG FIX] 原来的参数列表少了 leverage/entry_tag/side，且 min_stake 类型写死为 float
+    # 导致 mypy 报 "Signature incompatible with supertype"，实际运行中 freqtrade 传 None 会崩
+    # 改为与父类 IStrategy.custom_stake_amount 签名完全一致
     def custom_stake_amount(
-        self, pair: str, current_time, current_rate: float,
-        proposed_stake: float, min_stake: float, max_stake: float, **kwargs
-        ) -> float:
+        self,
+        pair: str,
+        current_time: datetime,
+        current_rate: float,
+        proposed_stake: float,
+        min_stake: float | None,  # [BUG FIX] 原来是 float，父类是 float | None
+        max_stake: float,
+        leverage: float,  # [BUG FIX] 原来缺少这个参数
+        entry_tag: str | None,  # [BUG FIX] 原来缺少这个参数
+        side: str,  # [BUG FIX] 原来缺少这个参数
+        **kwargs: Any,
+    ) -> float:
         """
         proposed_stake: 现有的钱
-        max_stake: 交易所允许的最大下单金额,是交易所返回的,不是需要我们配置的
+        max_stake: 交易所允许的最大下单金额，是交易所返回的，不是需要我们配置的
         保守买入：按 current_rate + buffer 计算数量，确保买到的是100倍数个币。
         """
         if current_rate <= 0:
             return 0.0
 
         # 给买入价加一个 buffer，避免市价单实际成交价偏高时买超
-        buffer_price = current_rate + 0.0005 
+        buffer_price = current_rate + 0.0005
 
         # 理论可以买多少个币
         raw_amount = proposed_stake / buffer_price
@@ -172,7 +196,9 @@ class ScalpV2(IStrategy):
         stake = amount * current_rate  # 换回 current_rate
 
         # 保证在范围内
-        if stake < min_stake:
+        if (
+            min_stake is not None and stake < min_stake
+        ):  # [BUG FIX] 原来直接 stake < min_stake，min_stake 为 None 时会报错
             return 0.0
 
         if stake > max_stake:
@@ -188,36 +214,35 @@ class ScalpV2(IStrategy):
         self,
         pair: str,
         trade: Trade,
-        current_time,
+        current_time: datetime,
         current_rate: float,
         current_profit: float,
-        **kwargs,
-    ) -> Optional[str]:
-        # 只在还没有退出订单时，挂一次TP
-        GRACE_SECONDS = 30  # 建仓后前 30 秒不触发“亏损退出”
-        PANIC_SL = -0.0015  # -0.15%
+        **kwargs: Any,
+    ) -> str | None:
+        # 浮亏超过阈值立刻退出，防止横盘缓慢下跌超过止损范围
+        # current_profit 是 freqtrade 计算的含手续费净利润
+        PANIC_SL = -0.001  # 与 custom_stoploss 的 REAL_STOPLOSS 保持一致
+        if current_profit <= PANIC_SL:
+            return "panic_sl"  # 触发即走，freqtrade 会撤掉原 TP，再下市价平仓
 
-        # 1) 只在没有任何退出单时，挂一次限价 TP（你原来的逻辑）
+        # 只在没有任何退出单时，挂一次限价 TP
         if trade.exit_order_status is None:
-            return "immediate_tp"  # 你的 TP 标签，不改变
-
-        # # 2) 过了 30 秒，若浮亏超过阈值，则立刻触发退出（市价）
-        # held_seconds = (current_time - trade.open_date_utc).total_seconds()
-        # if held_seconds >= GRACE_SECONDS and current_profit <= PANIC_SL:
-        #     # 提示：部分版本可返回 ("exit_signal", "panic_sl")
-        #     return "panic_sl"      # 触发即走，Freqtrade 会撤掉原 TP，再下市价平仓
+            return "immediate_tp"  # TP 标签
 
         return None
 
+    # [BUG FIX] 原来参数名是 current_rate（可选），但父类签名是 proposed_rate（必填）
+    # 且原来返回类型是 Optional[float]，父类要求 float，不一致会导致 mypy 报错
     def custom_exit_price(
         self,
         pair: str,
         trade: Trade,
-        current_time,
-        current_rate: Optional[float]=None,  # 设为可选
-        current_profit: Optional[float]=None,  # 设为可选
-        ** kwargs,
-    ) -> Optional[float]:
+        current_time: datetime,
+        proposed_rate: float,  # [BUG FIX] 原来是 current_rate: Optional[float] = None
+        current_profit: float,  # [BUG FIX] 原来是 Optional[float] = None
+        exit_tag: str | None,  # [BUG FIX] 原来缺少这个参数
+        **kwargs: Any,
+    ) -> float:  # [BUG FIX] 原来是 Optional[float]，父类要求 float
         """
         返回限价卖出价格：
         - 至少覆盖双边手续费 (fee * 2)
@@ -229,12 +254,12 @@ class ScalpV2(IStrategy):
         # 需要的最小涨幅 = 双边费率
         min_required = fee * 2
 
-        # 额外想要的净利幅度 (比如 0.001=0.1%)
-        extra_profit_pct = 0.000008
+        # 额外想要的净利幅度 (0.001=0.1% 净利润)
+        extra_profit_pct = 0.001
 
         # 最终止盈幅度
         tp_pct = min_required + extra_profit_pct
-        
+
         # 目标价
         target_origin = trade.open_rate * (1 + tp_pct)
         target = math.ceil(target_origin * 100000) / 100000.0
@@ -245,10 +270,14 @@ class ScalpV2(IStrategy):
         #     tick = m["limits"]["price"].get("min") or 0
         #     if tick > 0:
         #         target = (int(target / tick)) * tick
-
         # except Exception:
         #     pass  # 如果 dp 不可用，就不对齐
-        logger.info(f"=======buy: {trade.open_rate}, equal_fee_price: {(1+min_required) * trade.open_rate}, add_profit_price_origin: {target_origin}, target: {target}")
+
+        logger.info(
+            f"=======buy: {trade.open_rate}, "
+            f"equal_fee_price: {(1 + min_required) * trade.open_rate}, "
+            f"add_profit_price_origin: {target_origin}, target: {target}"
+        )
         return float(target)
 
     # 不使用规则化的 exit_trend（全部交给 custom_exit 系统）
@@ -257,28 +286,31 @@ class ScalpV2(IStrategy):
         df["exit_tag"] = ""
         return df
 
+    # [BUG FIX] 原来缺少 after_fill 参数，且 trade/current_time 等没有类型注解
+    # 与父类签名不一致，mypy 报错
     def custom_stoploss(
         self,
         pair: str,
-        trade,
-        current_time,
-        current_rate,
-        current_profit,
-        **kwargs
-    ) -> float:
+        trade: Trade,
+        current_time: datetime,
+        current_rate: float,
+        current_profit: float,
+        after_fill: bool,  # [BUG FIX] 原来缺少这个参数
+        **kwargs: Any,
+    ) -> float | None:
         """
         返回当前应生效的止损（负数，单位=相对开仓价的比例）
-        需求：建仓后 30 秒内不触发（给一个极宽的止损以“等效忽略”）
+        需求：建仓后 30 秒内不触发（给一个极宽的止损以"等效忽略"）
         """
         # 计算建仓至今的秒数
         held_seconds = (current_time - trade.open_date_utc).total_seconds()
 
         GRACE_SECONDS = 30
-        REAL_STOPLOSS = -0.0015  # 你的真实止损（-0.15%）
+        REAL_STOPLOSS = -0.001  # 价格止损 -0.1%（含手续费总亏损约 -0.3%）
 
         if held_seconds < GRACE_SECONDS:
             # 宽限期内：给一个极宽的止损，基本不可能被打到
-            return -0.99  # -99%，等效“先不止损”
+            return -0.99  # -99%，等效"先不止损"
         else:
             # 宽限期结束：恢复到真实止损
             return REAL_STOPLOSS
